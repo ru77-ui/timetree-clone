@@ -16,6 +16,7 @@ import {
   where, 
   onSnapshot, 
   deleteDoc, 
+  updateDoc,
   doc, 
   serverTimestamp 
 } from "firebase/firestore";
@@ -48,7 +49,10 @@ export default function Home() {
   const [selectedDay, setSelectedDay] = useState<number>(11);
   const [showModal, setShowModal] = useState(false);
 
-  // フォーム用 (開始・終了時間)
+  // 編集モード管理
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+
+  // フォーム用 (開始・終了時間・タイトル)
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("12:00");
@@ -107,7 +111,25 @@ export default function Home() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const handleAddEvent = async (e: React.FormEvent) => {
+  // 新規追加モーダルを開く
+  const openAddModal = () => {
+    setEditingEventId(null);
+    setTitle("");
+    setStartTime("10:00");
+    setEndTime("12:00");
+    setShowModal(true);
+  };
+
+  // 編集モーダルを開く
+  const openEditModal = (evt: CalendarEvent) => {
+    setEditingEventId(evt.id);
+    setTitle(evt.title);
+    setStartTime(evt.startTime || "10:00");
+    setEndTime(evt.endTime || "12:00");
+    setShowModal(true);
+  };
+
+  const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !user) return;
 
@@ -115,21 +137,33 @@ export default function Home() {
     const timeDisplay = `${startTime} 〜 ${endTime}`;
 
     try {
-      await addDoc(collection(db, "events"), {
-        title,
-        date: formattedDate,
-        startTime,
-        endTime,
-        time: timeDisplay,
-        type: mode,
-        userId: user.uid,
-        userEmail: user.email,
-        createdAt: serverTimestamp(),
-      });
+      if (editingEventId) {
+        // 編集保存
+        await updateDoc(doc(db, "events", editingEventId), {
+          title,
+          startTime,
+          endTime,
+          time: timeDisplay,
+        });
+      } else {
+        // 新規追加
+        await addDoc(collection(db, "events"), {
+          title,
+          date: formattedDate,
+          startTime,
+          endTime,
+          time: timeDisplay,
+          type: mode,
+          userId: user.uid,
+          userEmail: user.email,
+          createdAt: serverTimestamp(),
+        });
+      }
       setTitle("");
       setShowModal(false);
+      setEditingEventId(null);
     } catch (error) {
-      console.error("予定追加エラー:", error);
+      console.error("予定保存エラー:", error);
     }
   };
 
@@ -189,7 +223,7 @@ export default function Home() {
             </div>
           </div>
           <button 
-            onClick={() => setShowModal(true)}
+            onClick={openAddModal}
             style={{ padding: "10px 18px", backgroundColor: "#059669", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}
           >
             ＋ 予定を追加
@@ -296,21 +330,28 @@ export default function Home() {
                     <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>投稿: {evt.userEmail}</span>
                   )}
                 </div>
-                <button onClick={() => handleDeleteEvent(evt.id)} style={{ padding: "4px 8px", backgroundColor: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>
-                  削除
-                </button>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button onClick={() => openEditModal(evt)} style={{ padding: "4px 8px", backgroundColor: "#f1f5f9", color: "#2563eb", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+                    編集
+                  </button>
+                  <button onClick={() => handleDeleteEvent(evt.id)} style={{ padding: "4px 8px", backgroundColor: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>
+                    削除
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* 予定追加モーダル（ポップアップ） */}
+      {/* 予定追加・編集モーダル（ポップアップ） */}
       {showModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ backgroundColor: "white", padding: "24px", borderRadius: "20px", width: "90%", maxWidth: "400px" }}>
-            <h3 style={{ marginTop: 0, marginBottom: "16px" }}>{month + 1}月{selectedDay}日に予定を追加</h3>
-            <form onSubmit={handleAddEvent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px" }}>
+              {editingEventId ? "予定を編集" : `${month + 1}月${selectedDay}日に予定を追加`}
+            </h3>
+            <form onSubmit={handleSaveEvent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間（開始 〜 終了）</label>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -345,7 +386,7 @@ export default function Home() {
                   キャンセル
                 </button>
                 <button type="submit" style={{ flex: 1, padding: "10px", border: "none", backgroundColor: "#059669", color: "white", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
-                  追加する
+                  {editingEventId ? "更新する" : "追加する"}
                 </button>
               </div>
             </form>
