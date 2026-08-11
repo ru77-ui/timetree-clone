@@ -25,6 +25,8 @@ interface CalendarEvent {
   title: string;
   date: string;
   time?: string;
+  startTime?: string;
+  endTime?: string;
   type: "private" | "shared";
   userId: string;
   userEmail: string;
@@ -41,14 +43,15 @@ export default function Home() {
   const [mode, setMode] = useState<"private" | "shared">("private");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   
-  // カレンダー日付管理 (2026年8月固定から動的切り替え)
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 1)); // 2026年8月
-  const [selectedDay, setSelectedDay] = useState<number>(11); // 11日選択
+  // カレンダー日付管理
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 1));
+  const [selectedDay, setSelectedDay] = useState<number>(11);
   const [showModal, setShowModal] = useState(false);
 
-  // フォーム用
+  // フォーム用 (開始・終了時間)
   const [title, setTitle] = useState("");
-  const [time, setTime] = useState("12:00");
+  const [startTime, setStartTime] = useState("10:00");
+  const [endTime, setEndTime] = useState("12:00");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -109,12 +112,15 @@ export default function Home() {
     if (!title.trim() || !user) return;
 
     const formattedDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
+    const timeDisplay = `${startTime} 〜 ${endTime}`;
 
     try {
       await addDoc(collection(db, "events"), {
         title,
         date: formattedDate,
-        time,
+        startTime,
+        endTime,
+        time: timeDisplay,
         type: mode,
         userId: user.uid,
         userEmail: user.email,
@@ -282,7 +288,7 @@ export default function Home() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "12px", fontWeight: "bold", padding: "2px 6px", backgroundColor: "#ecfdf5", color: "#059669", borderRadius: "4px" }}>
-                      ⏰ {evt.time || "終日"}
+                      ⏰ {evt.time || (evt.startTime && evt.endTime ? `${evt.startTime} 〜 ${evt.endTime}` : "終日")}
                     </span>
                     <span style={{ fontWeight: "bold", fontSize: "15px" }}>{evt.title}</span>
                   </div>
@@ -306,13 +312,22 @@ export default function Home() {
             <h3 style={{ marginTop: 0, marginBottom: "16px" }}>{month + 1}月{selectedDay}日に予定を追加</h3>
             <form onSubmit={handleAddEvent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
-                <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間</label>
-                <input 
-                  type="time" 
-                  value={time} 
-                  onChange={(e) => setTime(e.target.value)} 
-                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
+                <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間（開始 〜 終了）</label>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input 
+                    type="time" 
+                    value={startTime} 
+                    onChange={(e) => setStartTime(e.target.value)} 
+                    style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                  />
+                  <span style={{ color: "#64748b", fontWeight: "bold" }}>〜</span>
+                  <input 
+                    type="time" 
+                    value={endTime} 
+                    onChange={(e) => setEndTime(e.target.value)} 
+                    style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                  />
+                </div>
               </div>
               <div>
                 <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>タイトル</label>
