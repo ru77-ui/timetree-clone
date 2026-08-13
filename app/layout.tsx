@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "カレンダーアプリ",
-  description: "TimeTree Clone",
+export const metadata = {
+  title: "TimeTree Clone",
+  description: "カレンダーアプリ",
+  manifest: "/manifest.json",
+  themeColor: "#10B981",
 };
 
 export default function RootLayout({
