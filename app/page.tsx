@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth, db } from "./firebase";
+// ★ firebase.ts から requestNotificationPermission を読み込み
+import { auth, db, requestNotificationPermission } from "./firebase";
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -72,6 +73,10 @@ export default function Home() {
       setUser(currentUser);
       if (currentUser?.displayName) {
         setDisplayNameInput(currentUser.displayName);
+      }
+      // ★ ユーザーがログインしている場合、プッシュ通知の許可要求＆トークン保存を実行
+      if (currentUser) {
+        requestNotificationPermission(currentUser.uid);
       }
       setLoading(false);
     });
@@ -321,7 +326,6 @@ export default function Home() {
       {/* コントロールパネル */}
       <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "20px", border: "1px solid #f1f5f9", marginBottom: "20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          {/* ★ 年・月の縦並び表示デザイン */}
           <div style={{ display: "flex", flexDirection: "column" }}>
             <span style={{ fontSize: "14px", color: "#64748b", fontWeight: "600", lineHeight: "1" }}>
               {year}年

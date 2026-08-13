@@ -1,20 +1,23 @@
-self.addEventListener("install", (event) => {
-  self.skipWaiting();
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
+const messaging = firebase.messaging();
 
-// バックグラウンドで通知を表示する処理
-self.addEventListener("push", (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || "📅 本日の予定のお知らせ";
-  const options = {
-    body: data.body || "本日の予定をご確認ください。",
-    icon: "/favicon.ico",
-    badge: "/favicon.ico"
+messaging.onBackgroundMessage((payload) => {
+  const notificationTitle = payload.notification.title;
+  const notificationOptions = {
+    body: payload.notification.body,
+    icon: "/icon.png"
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
