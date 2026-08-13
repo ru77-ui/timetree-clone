@@ -52,7 +52,7 @@ export default function Home() {
   const [mode, setMode] = useState<"private" | "shared">("private");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   
-  // ★ 初期値として「今日」の日付を自動取得してセット
+  // 初期値として「今日」の日付を自動取得してセット
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState<number>(today.getDate());
@@ -149,7 +149,6 @@ export default function Home() {
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  // ★ 「今日」に戻るボタンの処理
   const goToToday = () => {
     const now = new Date();
     setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -322,20 +321,28 @@ export default function Home() {
       {/* コントロールパネル */}
       <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "20px", border: "1px solid #f1f5f9", marginBottom: "20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <h1 style={{ margin: 0, fontSize: "28px", fontWeight: "bold" }}>{year}年 {month + 1}月</h1>
-            <div style={{ display: "flex", gap: "4px" }}>
-              <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "4px 8px" }}>&lt;</button>
-              <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "4px 8px" }}>&gt;</button>
+          {/* ★ 年・月の縦並び表示デザイン */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: "14px", color: "#64748b", fontWeight: "600", lineHeight: "1" }}>
+              {year}年
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+              <h1 style={{ margin: 0, fontSize: "28px", fontWeight: "bold", lineHeight: "1.2" }}>
+                {month + 1}月
+              </h1>
+              <div style={{ display: "flex", gap: "2px" }}>
+                <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "2px 6px", color: "#475569" }}>&lt;</button>
+                <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "2px 6px", color: "#475569" }}>&gt;</button>
+              </div>
+              <button 
+                onClick={goToToday}
+                style={{ padding: "3px 8px", backgroundColor: "#e2e8f0", color: "#334155", border: "none", borderRadius: "10px", fontSize: "11px", fontWeight: "bold", cursor: "pointer", marginLeft: "4px" }}
+              >
+                今日
+              </button>
             </div>
-            {/* 今日へ移動するボタン */}
-            <button 
-              onClick={goToToday}
-              style={{ padding: "4px 10px", backgroundColor: "#e2e8f0", color: "#334155", border: "none", borderRadius: "12px", fontSize: "12px", fontWeight: "bold", cursor: "pointer" }}
-            >
-              今日
-            </button>
           </div>
+
           <button 
             onClick={openAddModal}
             style={{ padding: "10px 18px", backgroundColor: "#059669", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}
