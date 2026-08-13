@@ -29,6 +29,8 @@ interface CalendarEvent {
   time?: string;
   startTime?: string;
   endTime?: string;
+  isAllDay?: boolean;
+  isPending?: boolean;
   type: "private" | "shared";
   userId: string;
   userEmail: string;
@@ -58,7 +60,8 @@ export default function Home() {
   // 編集モード管理
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-  // フォーム用 (開始・終了時間・タイトル)
+  // フォーム用 (時間指定タイプ・開始・終了時間・タイトル)
+  const [timeType, setTimeType] = useState<"normal" | "allDay" | "pending">("normal");
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("12:00");
@@ -72,54 +75,23 @@ export default function Home() {
       setLoading(false);
     });
 
-    // Web通知の許可リクエスト
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
     return () => unsubscribe();
   }, []);
 
-  // 1時間前通知タイマー (自分の予定のみ1分ごとに監視)
+  // Service Worker の登録 & Web通知の許可確認
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      if (!user) return;
-
-      const now = new Date();
-
-      events.forEach((evt) => {
-        // ★ 自分が登録した予定（userIdが一致）のみ通知する
-        if (evt.userId !== user.uid) return;
-        if (!evt.startTime || !evt.date) return;
-
-        // 開始日時の計算
-        const [yearStr, monthStr, dayStr] = evt.date.split("-");
-        const [hourStr, minStr] = evt.startTime.split(":");
-        const eventDate = new Date(
-          parseInt(yearStr), 
-          parseInt(monthStr) - 1, 
-          parseInt(dayStr), 
-          parseInt(hourStr), 
-          parseInt(minStr)
-        );
-
-        // 差分（分）
-        const diffMs = eventDate.getTime() - now.getTime();
-        const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
-        // ちょうど1時間前（60分前）に通知を発火
-        if (diffMinutes === 60) {
-          new Notification("🔔 予定のリマインダー（1時間前）", {
-            body: `まもなく予定「${evt.title}」の時間です（${evt.startTime} 〜）`,
-            icon: "/favicon.ico"
-          });
-        }
+    if ("serviceWorker" in navigator && "Notification" in window) {
+      navigator.serviceWorker.register("/sw.js").then((reg) => {
+        console.log("Service Worker registered:", reg);
+      }).catch((err) => {
+        console.error("Service Worker registration failed:", err);
       });
-    }, 60000);
 
-    return () => clearInterval(interval);
-  }, [events, user]);
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -181,6 +153,7 @@ export default function Home() {
 
   const openAddModal = () => {
     setEditingEventId(null);
+    setTimeType("normal");
     setTitle("");
     setStartTime("10:00");
     setEndTime("12:00");
@@ -190,8 +163,15 @@ export default function Home() {
   const openEditModal = (evt: CalendarEvent) => {
     setEditingEventId(evt.id);
     setTitle(evt.title);
-    setStartTime(evt.startTime || "10:00");
-    setEndTime(evt.endTime || "12:00");
+    if (evt.isAllDay) {
+      setTimeType("allDay");
+    } else if (evt.isPending) {
+      setTimeType("pending");
+    } else {
+      setTimeType("normal");
+      setStartTime(evt.startTime || "10:00");
+      setEndTime(evt.endTime || "12:00");
+    }
     setShowModal(true);
   };
 
@@ -200,25 +180,42 @@ export default function Home() {
     if (!title.trim() || !user) return;
 
     const formattedDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
-    const timeDisplay = `${startTime} 〜 ${endTime}`;
     const authorName = user.displayName || user.email?.split("@")[0] || "匿名";
+
+    let timeDisplay = "";
+    let isAllDay = false;
+    let isPending = false;
+
+    if (timeType === "allDay") {
+      timeDisplay = "終日";
+      isAllDay = true;
+    } else if (timeType === "pending") {
+      timeDisplay = "時間未定";
+      isPending = true;
+    } else {
+      timeDisplay = `${startTime} 〜 ${endTime}`;
+    }
 
     try {
       if (editingEventId) {
         await updateDoc(doc(db, "events", editingEventId), {
           title,
-          startTime,
-          endTime,
+          startTime: timeType === "normal" ? startTime : null,
+          endTime: timeType === "normal" ? endTime : null,
           time: timeDisplay,
+          isAllDay,
+          isPending,
           displayName: authorName
         });
       } else {
         await addDoc(collection(db, "events"), {
           title,
           date: formattedDate,
-          startTime,
-          endTime,
+          startTime: timeType === "normal" ? startTime : null,
+          endTime: timeType === "normal" ? endTime : null,
           time: timeDisplay,
+          isAllDay,
+          isPending,
           type: mode,
           userId: user.uid,
           userEmail: user.email,
@@ -411,8 +408,15 @@ export default function Home() {
               <div key={evt.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", backgroundColor: "white", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: "bold", padding: "2px 6px", backgroundColor: "#ecfdf5", color: "#059669", borderRadius: "4px" }}>
-                      ⏰ {evt.time || (evt.startTime && evt.endTime ? `${evt.startTime} 〜 ${evt.endTime}` : "終日")}
+                    <span style={{ 
+                      fontSize: "12px", 
+                      fontWeight: "bold", 
+                      padding: "2px 6px", 
+                      backgroundColor: evt.isAllDay ? "#fef3c7" : evt.isPending ? "#f3e8ff" : "#ecfdf5", 
+                      color: evt.isAllDay ? "#d97706" : evt.isPending ? "#7e22ce" : "#059669", 
+                      borderRadius: "4px" 
+                    }}>
+                      ⏰ {evt.time || (evt.startTime && evt.endTime ? `${evt.startTime} 〜 ${evt.endTime}` : "時間指定なし")}
                     </span>
                     <span style={{ fontWeight: "bold", fontSize: "15px" }}>{evt.title}</span>
                   </div>
@@ -444,24 +448,56 @@ export default function Home() {
               {editingEventId ? "予定を編集" : `${month + 1}月${selectedDay}日に予定を追加`}
             </h3>
             <form onSubmit={handleSaveEvent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {/* 時間タイプ選択ボタン */}
               <div>
-                <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間（開始 〜 終了）</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <input 
-                    type="time" 
-                    value={startTime} 
-                    onChange={(e) => setStartTime(e.target.value)} 
-                    style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
-                  <span style={{ color: "#64748b", fontWeight: "bold" }}>〜</span>
-                  <input 
-                    type="time" 
-                    value={endTime} 
-                    onChange={(e) => setEndTime(e.target.value)} 
-                    style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
+                <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "6px" }}>時間の指定方法</label>
+                <div style={{ display: "flex", gap: "6px", backgroundColor: "#f1f5f9", padding: "4px", borderRadius: "8px" }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setTimeType("normal")} 
+                    style={{ flex: 1, padding: "6px", fontSize: "12px", fontWeight: "bold", border: "none", borderRadius: "6px", cursor: "pointer", backgroundColor: timeType === "normal" ? "white" : "transparent", color: timeType === "normal" ? "#059669" : "#64748b" }}
+                  >
+                    時間指定
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setTimeType("allDay")} 
+                    style={{ flex: 1, padding: "6px", fontSize: "12px", fontWeight: "bold", border: "none", borderRadius: "6px", cursor: "pointer", backgroundColor: timeType === "allDay" ? "white" : "transparent", color: timeType === "allDay" ? "#d97706" : "#64748b" }}
+                  >
+                    終日
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setTimeType("pending")} 
+                    style={{ flex: 1, padding: "6px", fontSize: "12px", fontWeight: "bold", border: "none", borderRadius: "6px", cursor: "pointer", backgroundColor: timeType === "pending" ? "white" : "transparent", color: timeType === "pending" ? "#7e22ce" : "#64748b" }}
+                  >
+                    未定
+                  </button>
                 </div>
               </div>
+
+              {/* 時間入力（時間指定が選ばれているときのみ表示） */}
+              {timeType === "normal" && (
+                <div>
+                  <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間（開始 〜 終了）</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input 
+                      type="time" 
+                      value={startTime} 
+                      onChange={(e) => setStartTime(e.target.value)} 
+                      style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                    />
+                    <span style={{ color: "#64748b", fontWeight: "bold" }}>〜</span>
+                    <input 
+                      type="time" 
+                      value={endTime} 
+                      onChange={(e) => setEndTime(e.target.value)} 
+                      style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>タイトル</label>
                 <input 
@@ -473,6 +509,7 @@ export default function Home() {
                   style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                 />
               </div>
+
               <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowModal(false)} style={{ flex: 1, padding: "10px", border: "none", backgroundColor: "#f1f5f9", color: "#64748b", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
                   キャンセル
