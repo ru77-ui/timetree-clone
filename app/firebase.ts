@@ -1,9 +1,8 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, doc, updateDoc } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
 
-// Firebaseの設定情報（元々書いてあったご自身のプロジェクトの設定）
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -24,24 +23,30 @@ export const requestNotificationPermission = async (userId: string) => {
   try {
     // ブラウザが通知に対応しているか確認
     const supported = await isSupported();
-    if (!supported) return;
+    if (!supported) {
+      console.log("このブラウザはWeb Push通知に対応していません。");
+      return;
+    }
 
-    const messaging = getMessaging(app);
     const permission = await Notification.requestPermission();
-
     if (permission === "granted") {
+      const messaging = getMessaging(app);
+      
+      // ★ ここにFirebase Consoleで取得したVAPID鍵を入れてください
       const token = await getToken(messaging, {
-        // ★ Firebase ConsoleでコピーしたVAPID鍵をここに貼り付けます
         vapidKey: "YOUR_VAPID_KEY_HERE",
       });
 
       if (token && userId) {
-        // ユーザーのFirestoreに通知用トークンを保存
-        await updateDoc(doc(db, "users", userId), { fcmToken: token });
-        console.log("FCM Token saved:", token);
+        // Firestoreの users コレクションに FCM トークンを保存
+        const { doc, setDoc } = await import("firebase/firestore");
+        await setDoc(doc(db, "users", userId), { fcmToken: token }, { merge: true });
+        console.log("FCM Token saved successfully:", token);
       }
+    } else {
+      console.log("通知の権限が拒否されました。");
     }
   } catch (error) {
-    console.error("Notification permission error:", error);
+    console.error("通知トークン取得エラー:", error);
   }
 };
