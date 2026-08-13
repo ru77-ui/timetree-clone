@@ -43,7 +43,7 @@ export default function Home() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [message, setMessage] = useState("");
 
-  // ユーザー表示名設定用
+  // ユーザー表示名設定
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
 
@@ -72,7 +72,7 @@ export default function Home() {
       setLoading(false);
     });
 
-    // 通知の許可リクエスト
+    // Web通知の許可リクエスト
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -80,17 +80,20 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 1時間前通知のタイマーチェック (1分ごとに監視)
+  // 1時間前通知タイマー (自分の予定のみ1分ごとに監視)
   useEffect(() => {
     const interval = setInterval(() => {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
+      if (!user) return;
 
       const now = new Date();
 
       events.forEach((evt) => {
+        // ★ 自分が登録した予定（userIdが一致）のみ通知する
+        if (evt.userId !== user.uid) return;
         if (!evt.startTime || !evt.date) return;
 
-        // イベントの開始日時オブジェクト作成
+        // 開始日時の計算
         const [yearStr, monthStr, dayStr] = evt.date.split("-");
         const [hourStr, minStr] = evt.startTime.split(":");
         const eventDate = new Date(
@@ -101,11 +104,11 @@ export default function Home() {
           parseInt(minStr)
         );
 
-        // 差分（ミリ秒）
+        // 差分（分）
         const diffMs = eventDate.getTime() - now.getTime();
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
-        // ちょうど59分〜60分前の間に通知（1回のみ発火させる）
+        // ちょうど1時間前（60分前）に通知を発火
         if (diffMinutes === 60) {
           new Notification("🔔 予定のリマインダー（1時間前）", {
             body: `まもなく予定「${evt.title}」の時間です（${evt.startTime} 〜）`,
@@ -113,10 +116,10 @@ export default function Home() {
           });
         }
       });
-    }, 60000); // 1分ごとにチェック
+    }, 60000);
 
     return () => clearInterval(interval);
-  }, [events]);
+  }, [events, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -156,7 +159,6 @@ export default function Home() {
     }
   };
 
-  // 表示名の更新処理
   const handleUpdateDisplayName = async () => {
     if (!user || !displayNameInput.trim()) return;
     try {
@@ -171,15 +173,12 @@ export default function Home() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  // 月変更
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  // カレンダーの日付セル生成
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // 新規追加モーダルを開く
   const openAddModal = () => {
     setEditingEventId(null);
     setTitle("");
@@ -188,7 +187,6 @@ export default function Home() {
     setShowModal(true);
   };
 
-  // 編集モーダルを開く
   const openEditModal = (evt: CalendarEvent) => {
     setEditingEventId(evt.id);
     setTitle(evt.title);
@@ -207,7 +205,6 @@ export default function Home() {
 
     try {
       if (editingEventId) {
-        // 編集保存
         await updateDoc(doc(db, "events", editingEventId), {
           title,
           startTime,
@@ -216,7 +213,6 @@ export default function Home() {
           displayName: authorName
         });
       } else {
-        // 新規追加
         await addDoc(collection(db, "events"), {
           title,
           date: formattedDate,
@@ -278,7 +274,6 @@ export default function Home() {
     );
   }
 
-  // 選択日の判定用文字列
   const selectedDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
   const selectedDayEvents = events.filter((e) => e.date === selectedDateStr);
 
@@ -315,7 +310,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* トップコントロールパネル */}
+      {/* コントロールパネル */}
       <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "20px", border: "1px solid #f1f5f9", marginBottom: "20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -333,7 +328,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* タブ切り替え */}
+        {/* モード切り替え */}
         <div style={{ display: "flex", backgroundColor: "#e2e8f0", padding: "4px", borderRadius: "12px" }}>
           <button 
             onClick={() => setMode("private")} 
@@ -352,25 +347,21 @@ export default function Home() {
 
       {/* カレンダー本体 */}
       <div style={{ backgroundColor: "white", padding: "16px", borderRadius: "20px", border: "1px solid #f1f5f9", boxShadow: "0 4px 12px rgba(0,0,0,0.03)", marginBottom: "20px" }}>
-        {/* 曜日ヘッダー */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontWeight: "bold", fontSize: "14px", marginBottom: "12px" }}>
-          <span style={{ color: "#ef4444", textAlign: "center" }}>日</span>
-          <span style={{ color: "#64748b", textAlign: "center" }}>月</span>
-          <span style={{ color: "#64748b", textAlign: "center" }}>火</span>
-          <span style={{ color: "#64748b", textAlign: "center" }}>水</span>
-          <span style={{ color: "#64748b", textAlign: "center" }}>木</span>
-          <span style={{ color: "#64748b", textAlign: "center" }}>金</span>
-          <span style={{ color: "#3b82f6", textAlign: "center" }}>土</span>
+          <span style={{ color: "#ef4444" }}>日</span>
+          <span style={{ color: "#64748b" }}>月</span>
+          <span style={{ color: "#64748b" }}>火</span>
+          <span style={{ color: "#64748b" }}>水</span>
+          <span style={{ color: "#64748b" }}>木</span>
+          <span style={{ color: "#64748b" }}>金</span>
+          <span style={{ color: "#3b82f6" }}>土</span>
         </div>
 
-        {/* 日付グリッド */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px 0", textAlign: "center" }}>
-          {/* 空白セル */}
           {Array.from({ length: firstDay }).map((_, i) => (
             <div key={`empty-${i}`} />
           ))}
 
-          {/* 各日付 */}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const dayNum = i + 1;
             const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
@@ -396,13 +387,9 @@ export default function Home() {
                 }}>
                   {dayNum}
                 </div>
-                {/* 予定がある場合の緑ドットマーク */}
                 <div style={{ height: "6px", marginTop: "2px" }}>
-                  {hasEvents && !isSelected && (
-                    <div style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "#059669" }} />
-                  )}
-                  {hasEvents && isSelected && (
-                    <div style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "white" }} />
+                  {hasEvents && (
+                    <div style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: isSelected ? "white" : "#059669" }} />
                   )}
                 </div>
               </div>
@@ -411,7 +398,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 選択した日の予定リスト表示 */}
+      {/* 選択日の予定一覧 */}
       <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "16px", border: "1px solid #f1f5f9" }}>
         <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", color: "#334155" }}>
           📅 {month + 1}月{selectedDay}日の予定
@@ -449,7 +436,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* 予定追加・編集モーダル（ポップアップ） */}
+      {/* 予定追加・編集モーダル */}
       {showModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ backgroundColor: "white", padding: "24px", borderRadius: "20px", width: "90%", maxWidth: "400px" }}>
