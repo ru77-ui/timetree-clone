@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
+  updateProfile,
   User
 } from "firebase/auth";
 import { 
@@ -31,6 +32,7 @@ interface CalendarEvent {
   type: "private" | "shared";
   userId: string;
   userEmail: string;
+  displayName?: string;
 }
 
 export default function Home() {
@@ -40,6 +42,10 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [message, setMessage] = useState("");
+
+  // ユーザー表示名設定用
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
 
   const [mode, setMode] = useState<"private" | "shared">("private");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -60,10 +66,57 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser?.displayName) {
+        setDisplayNameInput(currentUser.displayName);
+      }
       setLoading(false);
     });
+
+    // 通知の許可リクエスト
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     return () => unsubscribe();
   }, []);
+
+  // 1時間前通知のタイマーチェック (1分ごとに監視)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+      const now = new Date();
+
+      events.forEach((evt) => {
+        if (!evt.startTime || !evt.date) return;
+
+        // イベントの開始日時オブジェクト作成
+        const [yearStr, monthStr, dayStr] = evt.date.split("-");
+        const [hourStr, minStr] = evt.startTime.split(":");
+        const eventDate = new Date(
+          parseInt(yearStr), 
+          parseInt(monthStr) - 1, 
+          parseInt(dayStr), 
+          parseInt(hourStr), 
+          parseInt(minStr)
+        );
+
+        // 差分（ミリ秒）
+        const diffMs = eventDate.getTime() - now.getTime();
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+        // ちょうど59分〜60分前の間に通知（1回のみ発火させる）
+        if (diffMinutes === 60) {
+          new Notification("🔔 予定のリマインダー（1時間前）", {
+            body: `まもなく予定「${evt.title}」の時間です（${evt.startTime} 〜）`,
+            icon: "/favicon.ico"
+          });
+        }
+      });
+    }, 60000); // 1分ごとにチェック
+
+    return () => clearInterval(interval);
+  }, [events]);
 
   useEffect(() => {
     if (!user) return;
@@ -91,12 +144,27 @@ export default function Home() {
     setMessage("");
     try {
       if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const res = await createUserWithEmailAndPassword(auth, email, password);
+        if (displayNameInput.trim()) {
+          await updateProfile(res.user, { displayName: displayNameInput });
+        }
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (error: any) {
       setMessage(`エラー: ${error.message}`);
+    }
+  };
+
+  // 表示名の更新処理
+  const handleUpdateDisplayName = async () => {
+    if (!user || !displayNameInput.trim()) return;
+    try {
+      await updateProfile(user, { displayName: displayNameInput });
+      setIsEditingName(false);
+      alert("名前を変更しました！");
+    } catch (error) {
+      console.error("名前変更エラー:", error);
     }
   };
 
@@ -135,6 +203,7 @@ export default function Home() {
 
     const formattedDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
     const timeDisplay = `${startTime} 〜 ${endTime}`;
+    const authorName = user.displayName || user.email?.split("@")[0] || "匿名";
 
     try {
       if (editingEventId) {
@@ -144,6 +213,7 @@ export default function Home() {
           startTime,
           endTime,
           time: timeDisplay,
+          displayName: authorName
         });
       } else {
         // 新規追加
@@ -156,6 +226,7 @@ export default function Home() {
           type: mode,
           userId: user.uid,
           userEmail: user.email,
+          displayName: authorName,
           createdAt: serverTimestamp(),
         });
       }
@@ -182,6 +253,15 @@ export default function Home() {
       <div style={{ maxWidth: "400px", margin: "80px auto", padding: "24px", border: "1px solid #e2e8f0", borderRadius: "16px", fontFamily: "sans-serif", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
         <h2 style={{ textAlign: "center", marginBottom: "20px" }}>{isSignUp ? "新規アカウント登録" : "ログイン"}</h2>
         <form onSubmit={handleAuth} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {isSignUp && (
+            <input 
+              type="text" 
+              value={displayNameInput} 
+              onChange={(e) => setDisplayNameInput(e.target.value)} 
+              placeholder="お名前（表示名/略称）" 
+              style={{ padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }} 
+            />
+          )}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="メールアドレス" style={{ padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }} />
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="パスワード（6文字以上）" style={{ padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1" }} />
           <button type="submit" style={{ padding: "12px", backgroundColor: "#10b981", color: "white", fontWeight: "bold", border: "none", borderRadius: "8px", cursor: "pointer" }}>
@@ -206,7 +286,30 @@ export default function Home() {
     <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {/* ユーザーヘッダー */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <span style={{ fontSize: "13px", color: "#64748b" }}>👤 {user.email}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {isEditingName ? (
+            <div style={{ display: "flex", gap: "4px" }}>
+              <input 
+                type="text" 
+                value={displayNameInput} 
+                onChange={(e) => setDisplayNameInput(e.target.value)} 
+                placeholder="表示名を入力" 
+                style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+              />
+              <button onClick={handleUpdateDisplayName} style={{ padding: "4px 8px", backgroundColor: "#059669", color: "white", border: "none", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}>保存</button>
+              <button onClick={() => setIsEditingName(false)} style={{ padding: "4px 8px", backgroundColor: "#e2e8f0", color: "#64748b", border: "none", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}>取消</button>
+            </div>
+          ) : (
+            <>
+              <span style={{ fontSize: "14px", fontWeight: "bold", color: "#334155" }}>
+                👤 {user.displayName || "名前未設定"} <span style={{ fontSize: "12px", fontWeight: "normal", color: "#94a3b8" }}>({user.email})</span>
+              </span>
+              <button onClick={() => setIsEditingName(true)} style={{ padding: "2px 6px", backgroundColor: "#f1f5f9", color: "#3b82f6", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}>
+                名前変更
+              </button>
+            </>
+          )}
+        </div>
         <button onClick={() => signOut(auth)} style={{ padding: "4px 10px", backgroundColor: "#f1f5f9", color: "#64748b", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>
           ログアウト
         </button>
@@ -327,7 +430,9 @@ export default function Home() {
                     <span style={{ fontWeight: "bold", fontSize: "15px" }}>{evt.title}</span>
                   </div>
                   {mode === "shared" && (
-                    <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>投稿: {evt.userEmail}</span>
+                    <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
+                      投稿: {evt.displayName || evt.userEmail}
+                    </span>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "6px" }}>
