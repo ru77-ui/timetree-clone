@@ -52,9 +52,10 @@ export default function Home() {
   const [mode, setMode] = useState<"private" | "shared">("private");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   
-  // カレンダー日付管理
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 1));
-  const [selectedDay, setSelectedDay] = useState<number>(11);
+  // ★ 初期値として「今日」の日付を自動取得してセット
+  const today = new Date();
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDay, setSelectedDay] = useState<number>(today.getDate());
   const [showModal, setShowModal] = useState(false);
 
   // 編集モード管理
@@ -147,6 +148,13 @@ export default function Home() {
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  // ★ 「今日」に戻るボタンの処理
+  const goToToday = () => {
+    const now = new Date();
+    setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDay(now.getDate());
+  };
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -274,6 +282,10 @@ export default function Home() {
   const selectedDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
   const selectedDayEvents = events.filter((e) => e.date === selectedDateStr);
 
+  const realToday = new Date();
+  const isTodayInView = realToday.getFullYear() === year && realToday.getMonth() === month;
+  const todayNum = realToday.getDate();
+
   return (
     <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {/* ユーザーヘッダー */}
@@ -316,6 +328,13 @@ export default function Home() {
               <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "4px 8px" }}>&lt;</button>
               <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", padding: "4px 8px" }}>&gt;</button>
             </div>
+            {/* 今日へ移動するボタン */}
+            <button 
+              onClick={goToToday}
+              style={{ padding: "4px 10px", backgroundColor: "#e2e8f0", color: "#334155", border: "none", borderRadius: "12px", fontSize: "12px", fontWeight: "bold", cursor: "pointer" }}
+            >
+              今日
+            </button>
           </div>
           <button 
             onClick={openAddModal}
@@ -364,6 +383,7 @@ export default function Home() {
             const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
             const hasEvents = events.some((e) => e.date === dateStr);
             const isSelected = selectedDay === dayNum;
+            const isRealToday = isTodayInView && dayNum === todayNum;
 
             return (
               <div 
@@ -378,9 +398,10 @@ export default function Home() {
                   display: "flex", 
                   alignItems: "center", 
                   justifyContent: "center", 
-                  fontWeight: isSelected ? "bold" : "500",
+                  fontWeight: isSelected || isRealToday ? "bold" : "500",
                   backgroundColor: isSelected ? "#059669" : "transparent",
-                  color: isSelected ? "white" : "#1e293b"
+                  color: isSelected ? "white" : isRealToday ? "#059669" : "#1e293b",
+                  border: isRealToday && !isSelected ? "2px solid #059669" : "none"
                 }}>
                   {dayNum}
                 </div>
@@ -399,6 +420,9 @@ export default function Home() {
       <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "16px", border: "1px solid #f1f5f9" }}>
         <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", color: "#334155" }}>
           📅 {month + 1}月{selectedDay}日の予定
+          {isTodayInView && selectedDay === todayNum && (
+            <span style={{ marginLeft: "8px", fontSize: "12px", color: "#059669", backgroundColor: "#ecfdf5", padding: "2px 8px", borderRadius: "12px" }}>今日</span>
+          )}
         </h3>
         {selectedDayEvents.length === 0 ? (
           <p style={{ color: "#94a3b8", fontSize: "14px", margin: 0 }}>予定はありません。</p>
@@ -448,7 +472,6 @@ export default function Home() {
               {editingEventId ? "予定を編集" : `${month + 1}月${selectedDay}日に予定を追加`}
             </h3>
             <form onSubmit={handleSaveEvent} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {/* 時間タイプ選択ボタン */}
               <div>
                 <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "6px" }}>時間の指定方法</label>
                 <div style={{ display: "flex", gap: "6px", backgroundColor: "#f1f5f9", padding: "4px", borderRadius: "8px" }}>
@@ -476,7 +499,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 時間入力（時間指定が選ばれているときのみ表示） */}
               {timeType === "normal" && (
                 <div>
                   <label style={{ fontSize: "12px", color: "#64748b", display: "block", marginBottom: "4px" }}>時間（開始 〜 終了）</label>
