@@ -19,8 +19,8 @@ import {
   onSnapshot, 
   deleteDoc, 
   updateDoc,
-  doc, 
-  serverTimestamp 
+  doc, orderBy,
+  serverTimestamp,
 } from "firebase/firestore";
 
 interface CalendarEvent {
@@ -67,6 +67,9 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("12:00");
+　const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isRange, setIsRange] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -99,15 +102,8 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const eventsRef = collection(db, "events");
-    let q = query(
-      eventsRef, 
-      where("type", "==", mode),
-      ...(mode === "private" ? [where("userId", "==", user.uid)] : [])
-    );
+ useEffect(() => {
+    const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedEvents: CalendarEvent[] = snapshot.docs.map((doc) => ({
@@ -118,8 +114,8 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [user, mode]);
-
+  }, []);
+   
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
@@ -187,59 +183,61 @@ export default function Home() {
     setShowModal(true);
   };
 
-  const handleSaveEvent = async (e: React.FormEvent) => {
+const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !user) return;
 
-    const formattedDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
-    const authorName = user.displayName || user.email?.split("@")[0] || "匿名";
-
+    // 時間表示の整形
     let timeDisplay = "";
-    let isAllDay = false;
-    let isPending = false;
+    if (timeType === "allDay") timeDisplay = "終日";
+    else if (timeType === "pending") timeDisplay = "時間未定";
+    else timeDisplay = `${startTime}～${endTime}`;
 
-    if (timeType === "allDay") {
-      timeDisplay = "終日";
-      isAllDay = true;
-    } else if (timeType === "pending") {
-      timeDisplay = "時間未定";
-      isPending = true;
-    } else {
-      timeDisplay = `${startTime} 〜 ${endTime}`;
-    }
-
-    try {
-      if (editingEventId) {
-        await updateDoc(doc(db, "events", editingEventId), {
-          title,
-          startTime: timeType === "normal" ? startTime : null,
-          endTime: timeType === "normal" ? endTime : null,
-          time: timeDisplay,
-          isAllDay,
-          isPending,
-          displayName: authorName
-        });
-      } else {
-        await addDoc(collection(db, "events"), {
-          title,
-      date: formattedDate,
+    const eventData = {
+      title,
       startTime: timeType === "normal" ? startTime : null,
       endTime: timeType === "normal" ? endTime : null,
       time: timeDisplay,
-      isAllDay,
-      isPending,
+      isAllDay: timeType === "allDay",
+      isPending: timeType === "pending",
       type: mode,
-      fcmToken: typeof window !== "undefined" ? localStorage.getItem("fcmToken") : null,
-      reminded: false,
-      userId: user?.uid || null,
-      userEmail: user?.email || null,
-      displayName: user?.displayName || null,
+      displayName: user.displayName || user.email?.split("@")[0] || "ゲスト",
       createdAt: serverTimestamp(),
-        });
+    };
+
+    try {
+      if (editingEventId) {
+        // 編集時
+        await updateDoc(doc(db, "events", editingEventId), eventData);
+      } else {
+        // 新規作成時
+        if (isRange && startDate && endDate) {
+          // ★ 期間指定の場合：開始日から終了日まで1日ずつループして保存
+          let current = new Date(startDate);
+          const last = new Date(endDate);
+
+          while (current <= last) {
+            const formatted = current.toISOString().split("T")[0];
+            await addDoc(collection(db, "events"), {
+              ...eventData,
+              date: formatted,
+            });
+            current.setDate(current.getDate() + 1);
+          }
+        } else {
+          // 通常（単日）の場合
+          const formattedDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
+          await addDoc(collection(db, "events"), {
+            ...eventData,
+            date: formattedDate,
+          });
+        }
       }
-      setTitle("");
+
       setShowModal(false);
+      setTitle("");
       setEditingEventId(null);
+      setIsRange(false); // リセット
     } catch (error) {
       console.error("予定保存エラー:", error);
     }
@@ -457,11 +455,9 @@ export default function Home() {
                     </span>
                     <span style={{ fontWeight: "bold", fontSize: "15px" }}>{evt.title}</span>
                   </div>
-                  {mode === "shared" && (
                     <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
                       投稿: {evt.displayName || evt.userEmail}
                     </span>
-                  )}
                 </div>
                 <div style={{ display: "flex", gap: "6px" }}>
                   <button onClick={() => openEditModal(evt)} style={{ padding: "4px 8px", backgroundColor: "#f1f5f9", color: "#2563eb", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
@@ -544,7 +540,35 @@ export default function Home() {
                   style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                 />
               </div>
+{/* ★ ここ（543行目）に貼り付け！ */}
+             <div style={{ marginBottom: "12px", borderTop: "1px solid #eee", paddingTop: "8px" }}>
+               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>
+                 <input
+                   type="checkbox"
+                   checked={isRange}
+                   onChange={(e) => setIsRange(e.target.checked)}
+                 />
+                 複数日にわたる予定にする（期間指定）
+               </label>
 
+               {isRange && (
+                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px" }}>
+                   <input
+                     type="date"
+                     value={startDate}
+                     onChange={(e) => setStartDate(e.target.value)}
+                     style={{ padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
+                   />
+                   <span>〜</span>
+                   <input
+                     type="date"
+                     value={endDate}
+                     onChange={(e) => setEndDate(e.target.value)}
+                     style={{ padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
+                   />
+                 </div>
+               )}
+             </div>
               <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowModal(false)} style={{ flex: 1, padding: "10px", border: "none", backgroundColor: "#f1f5f9", color: "#64748b", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
                   キャンセル
