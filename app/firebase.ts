@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getMessaging, getToken, isSupported } from "firebase/messaging";
+import { getMessaging, getToken, isSupported } from "firebase/messaging"; // インポートを追加
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -30,8 +30,9 @@ export const requestNotificationPermission = async () => {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       const messaging = getMessaging(app);
-      // VAPIDキー（必要に応じて設定）を使ってトークンを取得
-      const token = await getToken(messaging);
+      // getTokenを修正
+      // Firebase Consoleで取得したVAPID鍵（長い文字列）をここに貼り付けます
+      const token = await getToken(messaging, { vapidKey: "FirebaseConsoleでコピーした鍵ペアをここに貼り付けてください" });
       console.log("FCM Token:", token);
       return token;
     } else {
