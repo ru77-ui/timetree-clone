@@ -32,8 +32,9 @@ export const requestNotificationPermission = async () => {
       const messaging = getMessaging(app);
       // getTokenを修正
       // Firebase Consoleで取得したVAPID鍵（長い文字列）をここに貼り付けます
-      const token = await getToken(messaging, { vapidKey: "FirebaseConsoleでコピーした鍵ペアをここに貼り付けてください" });
-      console.log("FCM Token:", token);
+      const token = await getToken(messaging, { 
+  vapidKey: "BOCGH7XgbMM4FyVNQCSiub34qxtIU43hU_xGNx0ZuPWApvCYW49DBts8Bi8eODjyUCpZhRU1xufwcxB61eXLzT8" 
+});
       return token;
     } else {
       console.log("通知の権限が拒否されました。");
