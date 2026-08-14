@@ -75,9 +75,9 @@ export default function Home() {
         setDisplayNameInput(currentUser.displayName);
       }
       // ★ ユーザーがログインしている場合、プッシュ通知の許可要求＆トークン保存を実行
-      if (currentUser) {
-        requestNotificationPermission(currentUser.uid);
-      }
+     if (currentUser) {
+  requestNotificationPermission();
+}
       setLoading(false);
     });
 
@@ -222,17 +222,19 @@ export default function Home() {
       } else {
         await addDoc(collection(db, "events"), {
           title,
-          date: formattedDate,
-          startTime: timeType === "normal" ? startTime : null,
-          endTime: timeType === "normal" ? endTime : null,
-          time: timeDisplay,
-          isAllDay,
-          isPending,
-          type: mode,
-          userId: user.uid,
-          userEmail: user.email,
-          displayName: authorName,
-          createdAt: serverTimestamp(),
+      date: formattedDate,
+      startTime: timeType === "normal" ? startTime : null,
+      endTime: timeType === "normal" ? endTime : null,
+      time: timeDisplay,
+      isAllDay,
+      isPending,
+      type: mode,
+      fcmToken: typeof window !== "undefined" ? localStorage.getItem("fcmToken") : null,
+      reminded: false,
+      userId: user?.uid || null,
+      userEmail: user?.email || null,
+      displayName: user?.displayName || null,
+      createdAt: serverTimestamp(),
         });
       }
       setTitle("");

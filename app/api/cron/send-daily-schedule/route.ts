@@ -3,7 +3,7 @@ import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
-// Firebase Admin SDKの初期化（サーバー用）
+// Firebase Admin SDKの初期化
 if (!getApps().length) {
   initializeApp({
     credential: cert({
@@ -19,53 +19,48 @@ export async function GET() {
     const db = getFirestore();
     const messaging = getMessaging();
 
-    // 今日の日付を取得（YYYY-MM-DD形式）
-    const todayStr = new Date().toISOString().split("T")[0];
+    // 現在時刻と1時間後の時刻を計算
+    const now = new Date();
+    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
-    // 全ユーザーの FCM トークンを取得
-    const usersSnapshot = await db.collection("users").get();
+    // YYYY-MM-DD 形式の日付と HH:mm 形式の時刻を作成
+    const targetDate = oneHourLater.toISOString().split("T")[0];
+    const targetTime = oneHourLater.toTimeString().slice(0, 5); // "14:30" などの形式
 
-    for (const userDoc of usersSnapshot.docs) {
-      const userData = userDoc.data();
-      const fcmToken = userData.fcmToken;
+    // 1時間後に開始 & まだリマインドしていない予定を取得
+    const eventsSnapshot = await db
+      .collection("events")
+      .where("date", "==", targetDate)
+      .where("startTime", "==", targetTime)
+      .where("reminded", "==", false)
+      .get();
 
-      if (!fcmToken) continue;
+    if (eventsSnapshot.empty) {
+      return NextResponse.json({ success: true, message: "対象の予定はありません" });
+    }
 
-      // 今日の該当ユーザーの予定を取得
-      const eventsSnapshot = await db
-        .collection("events")
-        .where("userId", "==", userDoc.id)
-        .where("date", "==", todayStr)
-        .get();
+    // 該当する予定ごとに通知を送信
+    for (const doc of eventsSnapshot.docs) {
+      const event = doc.data();
+      const fcmToken = event.fcmToken;
 
-      if (eventsSnapshot.empty) {
-        // 今日の予定がない場合
+      if (fcmToken) {
         await messaging.send({
           token: fcmToken,
           notification: {
-            title: "📅 本日の予定",
-            body: "本日の予定はありません。良い一日を！",
+            title: "⏰ まもなく予定の時間です",
+            body: `1時間後 (${event.startTime}) から「${event.title}」があります！`,
           },
         });
-      } else {
-        // 今日の予定がある場合
-        const eventTitles = eventsSnapshot.docs
-          .map((doc) => doc.data().title)
-          .join(" / ");
 
-        await messaging.send({
-          token: fcmToken,
-          notification: {
-            title: `📅 今日の予定 (${eventsSnapshot.size}件)`,
-            body: eventTitles,
-          },
-        });
+        // 二重送信防止のため reminded を true に更新
+        await doc.ref.update({ reminded: true });
       }
     }
 
-    return NextResponse.json({ success: true, message: "通知を送信しました" });
+    return NextResponse.json({ success: true, count: eventsSnapshot.size });
   } catch (error) {
-    console.error("Cron通知処理エラー:", error);
+    console.error("1時間前リマインダーエラー:", error);
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
   }
 }
