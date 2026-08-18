@@ -22,6 +22,7 @@ import {
   doc, orderBy,
   serverTimestamp,
 } from "firebase/firestore";
+import { UserRoundIcon } from "lucide-react";
 
 interface CalendarEvent {
   id: string;
@@ -201,6 +202,8 @@ const handleSaveEvent = async (e: React.FormEvent) => {
       isAllDay: timeType === "allDay",
       isPending: timeType === "pending",
       type: mode,
+      userId:user.uid,//
+      userEmail:user.email,
       displayName: user.displayName || user.email?.split("@")[0] || "ゲスト",
       createdAt: serverTimestamp(),
     };
@@ -284,7 +287,22 @@ const handleSaveEvent = async (e: React.FormEvent) => {
   }
 
   const selectedDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
-  const selectedDayEvents = events.filter((e) => e.date === selectedDateStr);
+  const selectedDayEvents = events.filter((e) => {
+  // 日付が一致しているか確認
+  const isDateMatch = e.date === selectedDateStr;
+  if (!isDateMatch) return false;
+
+  // ★ 追加：現在選択しているタブ（mode）によって表示を完全に切り替える
+  if (mode === "private") {
+    // プライベートタブのときは「自分のプライベート予定」だけを表示
+    return e.type === "private" && user && e.userId === user.uid;
+  } else if (mode === "shared") {
+    // 共有カレンダータブのときは「共有予定」だけを表示
+    return e.type === "shared";
+  }
+
+  return false;
+});
 
   const realToday = new Date();
   const isTodayInView = realToday.getFullYear() === year && realToday.getMonth() === month;
@@ -392,7 +410,15 @@ const handleSaveEvent = async (e: React.FormEvent) => {
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const dayNum = i + 1;
             const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
-            const hasEvents = events.some((e) => e.date === dateStr);
+            const hasEvents = events.some((e) => {
+  if (e.date !== dateStr) return false;
+  if (mode === "private") {
+    return e.type === "private" && user && e.userId === user.uid;
+  } else if (mode === "shared") {
+    return e.type === "shared";
+  }
+  return false;
+});
             const isSelected = selectedDay === dayNum;
             const isRealToday = isTodayInView && dayNum === todayNum;
 
